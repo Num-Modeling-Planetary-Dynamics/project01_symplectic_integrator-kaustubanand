@@ -1,5 +1,11 @@
 # EAPS 591 - Project 1
 # Symplectic integrator to model the orbits of neptune and pluto
+# Kaustub Anand
+
+# NOTES
+# This code us
+
+# ========================================================================================================
 
 import numpy as np
 import matplotlib.pyplot as plt
