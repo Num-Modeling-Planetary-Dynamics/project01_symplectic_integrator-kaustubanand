@@ -12,7 +12,8 @@ import pandas as pd
 t_end = 365 * 10 ** 5  # days
 Msun = 1.98850e6 # in 10^24 kg
 G = 2.98e-4  # Scaled to the AU-days-Msun system
-dt = 365 * 2  # days # use a fixed time step
+dt = 365.25 * 2  # days # use a fixed time step
+accuracy = 1e-10 # accuracy for Danby solver
 
 # Calculate the magnitude of a vector
 
@@ -100,8 +101,6 @@ def xy_to_el(r_vec, P_vec, m):
     h_vec = np.cross(r_vec.T, v_vec.T)
     h_vec = h_vec.T
 
-
-
     hx = h_vec[0]  # x-component of the angular momentum
     hy = h_vec[1]  # y-component of the angular momentum
     hz = h_vec[2]  # z-component of the angular momentum
@@ -110,7 +109,7 @@ def xy_to_el(r_vec, P_vec, m):
     r = mag(r_vec)
     v = mag(v_vec)
 
-    # Calculate Eccentric Anomaly (E) a, e, inclination, lon_asc_node, arg_peri, and true_anom
+    # Calculate a, e, inclination, lon_asc_node, arg_peri, and true_anom
 
     a = 2 / r - v ** 2 / mu
     a = np.abs(1 / a)
@@ -121,17 +120,9 @@ def xy_to_el(r_vec, P_vec, m):
         a[0] = 1e-10 #adjust to prevent nan for the sun
         e[0] = 0
 
-    b = np.sqrt(1 - e ** 2) * a
-    E = np.arctan2(a * r_vec[1], b * r_vec[0])  # tan E = a * y / (b * x)
-
-    if np.sign(np.vdot(r_vec, v_vec)) < 0.0:
-        E = 2 * np.pi - E
-
-#     E = np.arccos(-1 * (mag(Q) - a) / (a * e))
-
     inclination = np.arccos(hz / h)
 
-    lon_asc_node = np.arctan2(hx, -1 * hy)
+    lon_asc_node = np.arctan2(np.sign(hz) * hx, -np.sign(hz) * hy)
 
     # true_anom = np.arcsin(v * a * (1 - e ** 2) / (h * e) )
     # true_anom = np.arccos((a * (1 - e ** 2) / r - 1) / e)
@@ -140,31 +131,37 @@ def xy_to_el(r_vec, P_vec, m):
     # arg_peri = np.arcsin(r_vec[2] / (r * np.sin(inclination))) - true_anom
     arg_peri = np.arctan2(-1 * hx, hy)
 
-    if(np.isnan(E[0])):
-        E[0] = 0 #adjust to prevent nan for the sun
+    if(np.isnan(inclination[0])):
+        #adjust to prevent nan for the sun
         inclination[0] = 0
         lon_asc_node[0] = 0
         arg_peri[0] = 0
         true_anom[0] = 0
 
-    return E, a, e, inclination, lon_asc_node, arg_peri, true_anom
+    return a, e, inclination, lon_asc_node, arg_peri, true_anom
 
 
 # Keplerian Drift
 # noinspection PyUnreachableCode
-def kepler_drift(Q, P, m, a, e, dt, n):
-    E, a, e, inclination, lon_asc_node, arg_peri, true_anom = xy_to_el(Q, P, m)  # Convert cartesian to orbital elements
+def kepler_drift(Q, P, E, m, a, e, dt, n):
+    a, e, inclination, lon_asc_node, arg_peri, true_anom = xy_to_el(Q, P, m)  # Convert cartesian to orbital elements
     M = E - e * np.sin(E) # Mean anomaly
 
-    E_tmp = E + deltai3(E, M)  # New Eccentric Anomaly
+    for i in range(50):  # Break out if a certain accuracy is not achieved after 50 loops
+
+        E_tmp = E + deltai3(E, M)  # New Eccentric Anomaly
+        if (((E_tmp - E) / E).all() < accuracy):
+            break
+
+    # Check E sign
+    for j in range(len(m)):
+        r_vec = Q[:,i]
+        v_vec = P[:,i]
+        if np.sign(np.vdot(r_vec, v_vec)) < 0.0:
+            E[i] = 2 * np.pi - E[i]
+
     r_0 = mag(Q)
     r = a * (1 - e * np.cos(E_tmp))
-
-    # # trig conversion to cartesian
-
-    # Q_tmp = [a * (np.cos(E) - e), a * np.sqrt(1 - e**2) * np.sin(E), Q[:,2]] # Keep z the same
-    # P_tmp = m * n * a**2 / r * [-1 * np.sin(E), np.sqrt(1 - e**2) * np.cos(E), 0] # Keep z the same
-    # P_tmp[2] = P[2]
 
     # Danby's conversion to cartesian
 
@@ -263,7 +260,7 @@ phi = []  # Resonance Angle
 # Arrays defined as [[X1, X2, X3, ... XN], [Y1, Y2, Y3, ... YN], ....]; Avoids .T multiplications
 # Array shape/axes = (time-step, planet, coordinate)
 
-data = pd.read_csv('midterm_input.csv')
+data = pd.read_csv('../data/midterm_input.csv')
 
 names = np.asarray(data['Object_Name'])
 m = np.asarray(data['mass']) / Msun # mass in Msun
@@ -286,7 +283,10 @@ P = p - (m * P0) / m_tot  # Canonical momentum (Barycentric)
 Q[:,0] = Q0
 P[:,0] = P0  # Add Sun coordinates into array
 
-E_tmp, a, e, inclination, lon_asc_node, arg_peri, true_anom = xy_to_el(Q, P, m)
+a, e, inclination, lon_asc_node, arg_peri, true_anom = xy_to_el(Q, P, m)
+
+b = a * np.sqrt(1 - e**2)
+E_tmp = np.arctan2(a * Q[:,1], b * Q[:,0])  # tan E = a * y / (b * x)
 M = E_tmp - e * np.sin(E_tmp)
 lambda_plt = arg_peri[2] + M[2]
 lambda_nep = arg_peri[1] + M[1]
@@ -340,8 +340,7 @@ while (t_arr[-1] <= t_end):
 
     # Update Keplerian positions
 
-    Q_tmp, P_tmp, E_tmp, arg_peri = kepler_drift(Q_tmp, P_tmp, m, a, e, dt, n)
-    # Q_tmp[:,1:], P_tmp[:,1:], E_tmp[1:], arg_peri[1:] = kepler_drift(Q_tmp[:,1:], P_tmp[:,1:], m[1:], a[1:], e[1:], dt, n[1:])
+    Q_tmp, P_tmp, E_tmp, arg_peri = kepler_drift(Q_tmp, P_tmp, E_tmp, m, a, e, dt, n)
 
     # Update Interaction velocities again
     P_tmp[:,1:] = int_kick(Q_tmp[:,1:], P_tmp[:,1:], m[1:], dt)  # Use updated half-time-step to kick velocities
