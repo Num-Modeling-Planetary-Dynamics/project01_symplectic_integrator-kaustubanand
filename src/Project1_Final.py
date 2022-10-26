@@ -155,10 +155,10 @@ def kepler_drift(Q, P, E, m, a, e, dt, n):
 
     # Check E sign
     for j in range(len(m)):
-        r_vec = Q[:,i]
-        v_vec = P[:,i]
+        r_vec = Q[:,j]
+        v_vec = P[:,j]
         if np.sign(np.vdot(r_vec, v_vec)) < 0.0:
-            E[i] = 2 * np.pi - E[i]
+            E[j] = 2 * np.pi - E[j]
 
     r_0 = mag(Q)
     r = a * (1 - e * np.cos(E_tmp))
@@ -293,7 +293,6 @@ lambda_nep = arg_peri[1] + M[1]
 phi_tmp = 3 * lambda_plt - 2 * lambda_nep - arg_peri[2]
 
 t_arr = np.append(t_arr, np.array([0]), axis=0)
-E = np.append(E, E_tmp, axis=0)
 E_err = np.asarray([0])
 phi = np.append(phi, phi_tmp)
 
@@ -305,6 +304,7 @@ num_planets = len(names)  # number of planets
 # Fix Array shapes
 Q = np.asarray([Q])
 P = np.asarray([P])
+E = np.asarray([E_tmp]) # Eccentric Anomaly
 P_bc = P # Barycentric Momentum to carry over in time steps
 
 q = np.asarray([q])
@@ -363,7 +363,7 @@ while (t_arr[-1] <= t_end):
     P = np.append(P, np.asarray([P_h]), axis=0)
     P_bc = np.append(P, np.asarray([P_tmp]), axis=0)
     E_err = np.append(E_err, ((E_tot - E_tot_0) / E_tot_0))
-    E = np.append(E, np.asarray((E_tmp)), axis=0)
+    E = np.append(E, np.asarray([E_tmp]), axis=0)
     M_nep = np.append(M_nep, M_nep_tmp)
     M_plt = np.append(M_plt, M_plt_tmp)
     phi = np.append(phi, phi_tmp)
