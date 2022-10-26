@@ -285,8 +285,19 @@ P[:,0] = P0  # Add Sun coordinates into array
 
 a, e, inclination, lon_asc_node, arg_peri, true_anom = xy_to_el(Q, P, m)
 
-b = a * np.sqrt(1 - e**2)
-E_tmp = np.arctan2(a * Q[:,1], b * Q[:,0])  # tan E = a * y / (b * x)
+# b = a * np.sqrt(1 - e**2)
+# E_tmp = np.arctan2(a * Q[:,1], b * Q[:,0])  # tan E = a * y / (b * x)
+
+r = mag(Q)
+E_tmp = np.arccos((1 - r / a) / e)
+
+# Check E sign
+for j in range(len(m)):
+    r_vec = Q[:, j]
+    v_vec = P[:, j]
+    if np.sign(np.vdot(r_vec, v_vec)) <= 0.0:
+        E_tmp[j] = 2 * np.pi - E_tmp[j]
+
 M = E_tmp - e * np.sin(E_tmp)
 lambda_plt = arg_peri[2] + M[2]
 lambda_nep = arg_peri[1] + M[1]
