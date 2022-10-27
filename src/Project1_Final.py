@@ -18,11 +18,7 @@ accuracy = 1e-10 # accuracy for Danby solver
 # Calculate the magnitude of a vector
 
 def mag(v):
-    if (np.ndim(v) == 1):
-        return np.sqrt(np.sum(v ** 2))
-    else:
-        return np.sqrt(np.sum(v ** 2, axis=0))
-
+    return np.linalg.norm(v, axis=0)
 
 # Set of functions for Keplerian Drift
 
@@ -124,8 +120,6 @@ def xy_to_el(r_vec, P_vec, m):
 
     lon_asc_node = np.arctan2(np.sign(hz) * hx, -np.sign(hz) * hy)
 
-    # true_anom = np.arcsin(v * a * (1 - e ** 2) / (h * e) )
-    # true_anom = np.arccos((a * (1 - e ** 2) / r - 1) / e)
     true_anom = np.arctan2(v * r / h * (1 + r), (a * (1 - e**2) - r))
 
     # arg_peri = np.arcsin(r_vec[2] / (r * np.sin(inclination))) - true_anom
@@ -143,13 +137,13 @@ def xy_to_el(r_vec, P_vec, m):
 
 # Keplerian Drift
 # noinspection PyUnreachableCode
-def kepler_drift(Q, P, E, m, a, e, dt, n):
+def kepler_drift(Q, P, E, M, m, a, e, dt, n):
     a, e, inclination, lon_asc_node, arg_peri, true_anom = xy_to_el(Q, P, m)  # Convert cartesian to orbital elements
-    M = E - e * np.sin(E) # Mean anomaly
 
     for i in range(50):  # Break out if a certain accuracy is not achieved after 50 loops
 
         E_tmp = E + deltai3(E, M)  # New Eccentric Anomaly
+        
         if (((E_tmp - E) / E).all() < accuracy):
             break
 
@@ -157,8 +151,8 @@ def kepler_drift(Q, P, E, m, a, e, dt, n):
     for j in range(len(m)):
         r_vec = Q[:,j]
         v_vec = P[:,j]
-        if np.sign(np.vdot(r_vec, v_vec)) < 0.0:
-            E[j] = 2 * np.pi - E[j]
+        if (E_tmp[j] >= 2 * np.pi):
+            E_tmp[j] = E_tmp[j] - 2 * np.pi
 
     r_0 = mag(Q)
     r = a * (1 - e * np.cos(E_tmp))
@@ -295,12 +289,12 @@ E_tmp = np.arccos((1 - r / a) / e)
 for j in range(len(m)):
     r_vec = Q[:, j]
     v_vec = P[:, j]
-    if np.sign(np.vdot(r_vec, v_vec)) <= 0.0:
-        E_tmp[j] = 2 * np.pi - E_tmp[j]
+    if (E_tmp[j] >= 2 * np.pi):  # np.sign(np.vdot(r_vec, v_vec)) < 0.0:
+        E_tmp[j] = E_tmp[j] - 2 * np.pi
 
-M = E_tmp - e * np.sin(E_tmp)
-lambda_plt = arg_peri[2] + M[2]
-lambda_nep = arg_peri[1] + M[1]
+M_arr = E_tmp - e * np.sin(E_tmp)
+lambda_plt = arg_peri[2] + M_arr[2]
+lambda_nep = arg_peri[1] + M_arr[1]
 phi_tmp = 3 * lambda_plt - 2 * lambda_nep - arg_peri[2]
 
 t_arr = np.append(t_arr, np.array([0]), axis=0)
@@ -315,7 +309,8 @@ num_planets = len(names)  # number of planets
 # Fix Array shapes
 Q = np.asarray([Q])
 P = np.asarray([P])
-E = np.asarray([E_tmp]) # Eccentric Anomaly
+E = np.asarray([E_tmp])
+M_arr = np.asarray([M_arr])
 P_bc = P # Barycentric Momentum to carry over in time steps
 
 q = np.asarray([q])
@@ -335,13 +330,11 @@ while (t_arr[-1] <= t_end):
     Q_tmp = np.asarray(Q[-1])
     P_tmp = np.asarray(P_bc[-1])
     E_tmp = np.asarray(E[-1])
+    M_tmp = np.asarray(M_arr[-1])
     t = np.asarray(t_arr[-1])
 
     if (t % (365 * 5000) == 0):
         print("\n\nAt t = {} years".format(t / 365))  # Print time steps
-
-    # if(t_arr[-1] > 0):
-    #     P_tmp = hc_to_bc(P_tmp, origin_b, origin_h)  # Convert heliocentric velocity/momentum to barycentric velocity/momentum
 
     # Update Sun Drift
     Q_tmp[:,0] = sun_drift(Q_tmp[:,0], P_tmp[:,0], m[0], dt)
@@ -351,7 +344,7 @@ while (t_arr[-1] <= t_end):
 
     # Update Keplerian positions
 
-    Q_tmp, P_tmp, E_tmp, arg_peri = kepler_drift(Q_tmp, P_tmp, E_tmp, m, a, e, dt, n)
+    Q_tmp, P_tmp, E_tmp, arg_peri = kepler_drift(Q_tmp, P_tmp, E_tmp, M_tmp, m, a, e, dt, n)
 
     # Update Interaction velocities again
     P_tmp[:,1:] = int_kick(Q_tmp[:,1:], P_tmp[:,1:], m[1:], dt)  # Use updated half-time-step to kick velocities
@@ -363,7 +356,13 @@ while (t_arr[-1] <= t_end):
 
     # Calculate Energy and Mean Anomaly and Resonance angle
     E_tot = calc_energy(Q_tmp, P_tmp, m)
-    M = E_tmp - e * np.sin(E_tmp)
+
+    M_tmp = M_tmp + n * dt
+
+    for j in range(len(M_tmp)):
+        if (M_tmp[j] >= 2 * np.pi):
+            M_tmp[j] -= 2 * np.pi
+
     M_nep_tmp = M[1]
     M_plt_tmp = M[2]
     lambda_nep = M_nep_tmp + arg_peri[1]
@@ -375,6 +374,7 @@ while (t_arr[-1] <= t_end):
     P_bc = np.append(P, np.asarray([P_tmp]), axis=0)
     E_err = np.append(E_err, ((E_tot - E_tot_0) / E_tot_0))
     E = np.append(E, np.asarray([E_tmp]), axis=0)
+    M_arr = np.append(M_arr, np.asarray([M_tmp]), axis=0)
     M_nep = np.append(M_nep, M_nep_tmp)
     M_plt = np.append(M_plt, M_plt_tmp)
     phi = np.append(phi, phi_tmp)
