@@ -12,7 +12,7 @@ import pandas as pd
 t_end = 365 * 10 ** 5  # days
 Msun = 1.98850e6 # in 10^24 kg
 G = 2.98e-4  # Scaled to the AU-days-Msun system
-dt = 365.25 * 2  # days # use a fixed time step
+dt = 365.25 * 5  # days # use a fixed time step
 accuracy = 1e-10 # accuracy for Danby solver
 
 # Calculate the magnitude of a vector
@@ -58,27 +58,27 @@ def deltai3(E, M):
     return deltai
 
 # Danby's f function
-def f_generate(E, E_0, r_0, a):
-    f = a / r_0 * (np.cos(E - E_0) - 1) + 1
+def f_generate(dE, r_0, a):
+    f = a / r_0 * (np.cos(dE) - 1) + 1
 
     return f
 
 
-def f_dot_generate(E, E_0, r, r_0, a, n):
-    f_dot = -a ** 2 / (r * r_0) * n * (np.sin(E - E_0))
+def f_dot_generate(dE, r, r_0, a, n):
+    f_dot = -a ** 2 / (r * r_0) * n * (np.sin(dE))
 
     return f_dot
 
 
 # Danby's g function
-def g_generate(E, E_0, dt, n):
-    g = dt + (np.sin(E - E_0) - (E - E_0)) / n  # t - t_0 = dt
+def g_generate(dE, dt, n):
+    g = dt + (np.sin(dE) - (dE)) / n  # t - t_0 = dt
 
     return g
 
 
-def g_dot_generate(E, E_0, r, a):
-    g_dot = a / r * (np.cos(E - E_0) - 1) + 1
+def g_dot_generate(dE, r, a):
+    g_dot = a / r * (np.cos(dE) - 1) + 1
 
     return g_dot
 
@@ -140,12 +140,19 @@ def xy_to_el(r_vec, P_vec, m):
 def kepler_drift(Q, P, E, M, m, a, e, dt, n):
     a, e, inclination, lon_asc_node, arg_peri, true_anom = xy_to_el(Q, P, m)  # Convert cartesian to orbital elements
 
+    for k in range(len(M)):
+        if(np.abs(M[k] + 2 * np.pi - E[k]) < np.abs(M[k] - E[k])):
+            M[k] += 2 * np.pi
+
+    E_tmp = E
     for i in range(50):  # Break out if a certain accuracy is not achieved after 50 loops
 
         E_tmp = E + deltai3(E, M)  # New Eccentric Anomaly
-        
+
         if (((E_tmp - E) / E).all() < accuracy):
             break
+
+    dE = E_tmp - E
 
     # Check E sign
     for j in range(len(m)):
@@ -159,10 +166,10 @@ def kepler_drift(Q, P, E, M, m, a, e, dt, n):
 
     # Danby's conversion to cartesian
 
-    f = f_generate(E_tmp, E, r_0, a)  # (E, E_0, r_0, a)
-    g = g_generate(E_tmp, E, dt, n)  # (E, E_0, dt, n)
-    f_dot = f_dot_generate(E_tmp, E, r, r_0, a, n)  # (E, E_0, r, r_0, a, n)
-    g_dot = g_dot_generate(E_tmp, E, r, a)  # (E, E_0, r, a)
+    f = f_generate(dE, r_0, a)  # (dE, r_0, a)
+    g = g_generate(dE, dt, n)  # (dE, dt, n)
+    f_dot = f_dot_generate(dE, r, r_0, a, n)  # (dE, r, r_0, a, n)
+    g_dot = g_dot_generate(dE, r, a)  # (dE, r, a)
 
     r = f * Q + g * (P / m)  # f and g are arrays
     v = f_dot * Q + g_dot * P / m
@@ -279,9 +286,6 @@ P[:,0] = P0  # Add Sun coordinates into array
 
 a, e, inclination, lon_asc_node, arg_peri, true_anom = xy_to_el(Q, P, m)
 
-# b = a * np.sqrt(1 - e**2)
-# E_tmp = np.arctan2(a * Q[:,1], b * Q[:,0])  # tan E = a * y / (b * x)
-
 r = mag(Q)
 E_tmp = np.arccos((1 - r / a) / e)
 
@@ -333,7 +337,7 @@ while (t_arr[-1] <= t_end):
     M_tmp = np.asarray(M_arr[-1])
     t = np.asarray(t_arr[-1])
 
-    if (t % (365 * 5000) == 0):
+    if (t % (365.25 * 5000) == 0):
         print("\n\nAt t = {} years".format(t / 365))  # Print time steps
 
     # Update Sun Drift
@@ -363,8 +367,8 @@ while (t_arr[-1] <= t_end):
         if (M_tmp[j] >= 2 * np.pi):
             M_tmp[j] -= 2 * np.pi
 
-    M_nep_tmp = M[1]
-    M_plt_tmp = M[2]
+    M_nep_tmp = M_tmp[1]
+    M_plt_tmp = M_tmp[2]
     lambda_nep = M_nep_tmp + arg_peri[1]
     lambda_plt = M_plt_tmp + arg_peri[2]
     phi_tmp = 3 * lambda_plt - 2 * lambda_nep - arg_peri[2]
