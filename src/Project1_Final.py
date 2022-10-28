@@ -174,7 +174,7 @@ def kepler_drift(Q, P, E, M, m, a, e, dt, n):
     r = f * Q + g * (P / m)  # f and g are arrays
     v = f_dot * Q + g_dot * P / m
 
-    return r, m * v, E_tmp, arg_peri
+    return r, m * v, E_tmp, arg_peri, e
 
 
 # convert barycentric to heliocentric
@@ -286,6 +286,7 @@ P[:,0] = P0  # Add Sun coordinates into array
 
 a, e, inclination, lon_asc_node, arg_peri, true_anom = xy_to_el(Q, P, m)
 
+e_arr = e
 r = mag(Q)
 E_tmp = np.arccos((1 - r / a) / e)
 
@@ -315,6 +316,7 @@ Q = np.asarray([Q])
 P = np.asarray([P])
 E = np.asarray([E_tmp])
 M_arr = np.asarray([M_arr])
+e_arr = np.asarray([e_arr])
 P_bc = P # Barycentric Momentum to carry over in time steps
 
 q = np.asarray([q])
@@ -335,6 +337,7 @@ while (t_arr[-1] <= t_end):
     P_tmp = np.asarray(P_bc[-1])
     E_tmp = np.asarray(E[-1])
     M_tmp = np.asarray(M_arr[-1])
+    e_tmp = np.asarray(e_arr[-1])
     t = np.asarray(t_arr[-1])
 
     if (t % (365.25 * 5000) == 0):
@@ -348,7 +351,7 @@ while (t_arr[-1] <= t_end):
 
     # Update Keplerian positions
 
-    Q_tmp, P_tmp, E_tmp, arg_peri = kepler_drift(Q_tmp, P_tmp, E_tmp, M_tmp, m, a, e, dt, n)
+    Q_tmp, P_tmp, E_tmp, arg_peri, e_tmp = kepler_drift(Q_tmp, P_tmp, E_tmp, M_tmp, m, a, e, dt, n)
 
     # Update Interaction velocities again
     P_tmp[:,1:] = int_kick(Q_tmp[:,1:], P_tmp[:,1:], m[1:], dt)  # Use updated half-time-step to kick velocities
@@ -379,6 +382,7 @@ while (t_arr[-1] <= t_end):
     E_err = np.append(E_err, ((E_tot - E_tot_0) / E_tot_0))
     E = np.append(E, np.asarray([E_tmp]), axis=0)
     M_arr = np.append(M_arr, np.asarray([M_tmp]), axis=0)
+    e_arr = np.append(e_arr, np.asarray([e_tmp]), axis=0)
     M_nep = np.append(M_nep, M_nep_tmp)
     M_plt = np.append(M_plt, M_plt_tmp)
     phi = np.append(phi, phi_tmp)
@@ -388,14 +392,20 @@ while (t_arr[-1] <= t_end):
 
 fig, (ax1, ax2) = plt.subplots(2)
 
-ax1.plot(t_arr, E_err)
-ax2.plot(t_arr, phi)
+ax1.plot(t_arr / 365.25, E_err)
+ax2.plot(t_arr / 365.25, phi)
 
-ax1.set_xlabel(f"Time (days); dt = {dt / 365} years")
-ax2.set_xlabel(f"Time (days); dt = {dt / 365} years")
+ax1.set_xlabel(f"Time (years); dt = {np.round(dt / 365, 0)} years")
+ax2.set_xlabel(f"Time (years); dt = {np.round(dt / 365, 0)} years")
 ax1.set_ylabel(r'$\Delta \epsilon / \epsilon_0$')
-ax2.set_ylabel(r'\phi')
+ax2.set_ylabel(r'$\phi$')
 
 plt.show()
+
+# plt.plot(t_arr, e_arr, label = names)
+# plt.xlabel("Time (days)")
+# plt.ylabel("eccentricity (e)")
+#
+# plt.show()
 
 
