@@ -153,13 +153,7 @@ def kepler_drift(Q, P, E, M, m, a, e, dt, n):
             break
 
     dE = E_tmp - E
-
-    # Check E sign
-    for j in range(len(m)):
-        r_vec = Q[:,j]
-        v_vec = P[:,j]
-        if (E_tmp[j] >= 2 * np.pi):
-            E_tmp[j] = E_tmp[j] - 2 * np.pi
+    E_tmp = np.mod(E_tmp, 2 * np.pi)
 
     r_0 = mag(Q)
     r = a * (1 - e * np.cos(E_tmp))
@@ -294,7 +288,7 @@ E_tmp = np.arccos((1 - r / a) / e)
 for j in range(len(m)):
     r_vec = Q[:, j]
     v_vec = P[:, j]
-    if (E_tmp[j] >= 2 * np.pi):  # np.sign(np.vdot(r_vec, v_vec)) < 0.0:
+    if np.sign(np.vdot(r_vec, v_vec)) < 0.0:
         E_tmp[j] = E_tmp[j] - 2 * np.pi
 
 M_arr = E_tmp - e * np.sin(E_tmp)
@@ -365,10 +359,12 @@ while (t_arr[-1] <= t_end):
     E_tot = calc_energy(Q_tmp, P_tmp, m)
 
     M_tmp = M_tmp + n * dt
+    M_tmp = np.mod(M_tmp, 2 * np.pi)
 
-    for j in range(len(M_tmp)):
-        if (M_tmp[j] >= 2 * np.pi):
-            M_tmp[j] -= 2 * np.pi
+    # for j in range(len(M_tmp)):
+    #     if (M_tmp[j] >= 2 * np.pi):
+    #         M_tmp[j] -= 2 * np.pi
+
 
     M_nep_tmp = M_tmp[1]
     M_plt_tmp = M_tmp[2]
@@ -403,9 +399,10 @@ ax2.set_ylabel(r'$\phi$')
 plt.show()
 
 # plt.plot(t_arr, e_arr, label = names)
-# plt.xlabel("Time (days)")
+# plt.xlabel("Time (years)")
 # plt.ylabel("eccentricity (e)")
 #
+# plt.legend()
 # plt.show()
 
 
