@@ -157,7 +157,7 @@ def kepler_drift(Q, P, E, M, m, a, e, dt, n):
 
     dE = E_tmp - E
     sign = np.sign(np.diag(np.tensordot(Q, P / m, axes=[0, 0])))
-    E_tmp = np.where(sign < 0.0, E_tmp - 2 * np.pi, E_tmp)
+    E_tmp = np.where(sign < 0.0, 2 * np.pi - E_tmp, E_tmp)
     E_tmp = np.mod(E_tmp, 2 * np.pi)
 
     r_0 = mag(Q)
@@ -294,7 +294,7 @@ for j in range(len(m)):
     v_vec = P[:, j]
     sign = np.sign(np.vdot(r_vec, v_vec))
     if sign < 0.0:
-        E_tmp[j] = E_tmp[j] - 2 * np.pi
+        E_tmp[j] = 2 * np.pi - E_tmp[j]
 
 M_arr = E_tmp - e * np.sin(E_tmp)
 lambda_plt = arg_peri[2] + M_arr[2]
