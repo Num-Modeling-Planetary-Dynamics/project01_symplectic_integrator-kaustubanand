@@ -9,11 +9,13 @@
 # Kaustub Anand Notes
 
 
-I have submitted the final code and initial conditions data used for the Symplectic Integrator project. I used the Democratic Heliocentric Method. It is set up to run automatically and is set up to use $AU-Days-M_{sun}$ as the units. The arrays defined as [[X1, X2, X3, ... XN], [Y1, Y2, Y3, ... YN], ....] with a dimensions/shape as (time-step, cartesian coordinate, planet).
+I have submitted the final code and initial conditions data used for the Symplectic Integrator project. I used the Democratic Heliocentric Method. It is set up to run automatically and is set up to use $AU-Days-M_{sun}$ as the units. The arrays defined as [[X1, X2, X3, ... XN], [Y1, Y2, Y3, ... YN], ....] with a dimensions/shape as (time-step, cartesian coordinate, planet). The dataset I use is from JPL Horizons from Oct 12, 2022.
 
 ~~The plots submitted on Brightspace are of the Energy error values and Resonance Angle until the code breaks down into `NaNs` after a ~200 Earth Years.~~
 
-**The code now runs for the full time!**  The resonance angle seems bounded, but not so much for the case of the energy error. I will re-check my formula to see that I am plotting the correct value. The $e$ vs $t$ plots created at the end show that the eccentricity stays under 1 until a certain time, after which it sharply increases to  high value, but still allows the code to run all the way through. I am unsure of the reason.
+**The code now runs for the full time!**  The resonance angle seems bounded and the energy error is really small. The $e$ vs $t$ plots created at the end show that the eccentricity stays under 1 the whole time.
+
+My implementation of the Danby solver was incorrect.
 
 Below are the main issues I ran into, and why i believe the code doesn't work well:
 

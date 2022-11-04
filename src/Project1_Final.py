@@ -13,7 +13,7 @@ t_end = 365 * 10 ** 5  # days
 Msun = 1.98850e6 # in 10^24 kg
 G = 2.98e-4  # Scaled to the AU-days-Msun system
 dt = 365.25 * 5  # days # use a fixed time step
-accuracy = 1e-10 # accuracy for Danby solver
+accuracy = 1e-8 # accuracy for Danby solver
 
 # Calculate the magnitude of a vector
 
@@ -22,44 +22,44 @@ def mag(v):
 
 # Set of functions for Keplerian Drift
 
-def f(E, M):
+def f(E, M, e):
     f_val = E - e * np.sin(E) - M
     return f_val
 
 
-def f_prime(E):
+def f_prime(E, e):
     f_pr = 1 - e * np.cos(E)
     return f_pr
 
 
-def f_2prime(E):
+def f_2prime(E, e):
     f_2pr = e * np.sin(E)
     return f_2pr
 
 
-def f_3prime(E):
+def f_3prime(E, e):
     f_3pr = e * np.cos(E)
     return f_3pr
 
 
-def deltai1(E, M):
-    deltai = -1 * f(E, M) / f_prime(E)
+def deltai1(E, M, e):
+    deltai = -1 * f(E, M, e) / f_prime(E, e)
     return deltai
 
 
-def deltai2(E, M):
-    deltai = -1 * f(E, M) / (f_prime(E) + 0.5 * deltai1(E, M) * f_2prime(E))
+def deltai2(E, M, e):
+    deltai = -1 * f(E, M, e) / (f_prime(E, e) + 0.5 * deltai1(E, M, e) * f_2prime(E, e))
     return deltai
 
 
-def deltai3(E, M):
+def deltai3(E, M, e):
     # deltai2 = deltai2(E)
-    deltai = -1 * f(E, M) / (f_prime(E) + (0.5 * deltai2(E, M) * f_2prime(E)) + (deltai2(E, M) ** 2 * f_3prime(E) / 6))
+    deltai = -1 * f(E, M, e) / (f_prime(E, e) + (0.5 * deltai2(E, M, e) * f_2prime(E, e)) + (deltai2(E, M, e) ** 2 * f_3prime(E, e) / 6))
     return deltai
 
 # Danby's f function
 def f_generate(dE, r_0, a):
-    f = a / r_0 * (np.cos(dE) - 1) + 1
+    f = a / r_0 * (np.cos(dE) - 1.0) + 1.0
 
     return f
 
@@ -82,6 +82,24 @@ def g_dot_generate(dE, r, a):
 
     return g_dot
 
+def danby(E0, M, e):
+    k = 0.85 # initial guess
+
+    E = M + np.sign(np.sin(M)) * e * k
+    for i in range(100): # Break out if a certain accuracy is not achieved after 50 loops
+        Enew = E + deltai3(E, M, e)
+        error = np.abs((Enew - E) / E)
+        if(error.all() <= accuracy):
+            # return Enew
+            # Accuracy statement doesn't work for some reason
+            break
+        E = Enew
+
+    return Enew
+
+    # print(f'E = {E}; Enew = {Enew}')
+    # print(f'Error = {error}')
+    # raise RuntimeError("The Danby function did not converge on a solution")
 
 # convert cartesian to orbital elements
 def xy_to_el(r_vec, P_vec, m):
@@ -107,6 +125,9 @@ def xy_to_el(r_vec, P_vec, m):
 
     e = np.sqrt(1 - (h ** 2) / (a * mu))
 
+    if(e[1] >= 1.0 or e[2] >= 1.0):
+        raise RuntimeError(f'e = {e}; h^2 = {h**2}; a = {a}')
+
     if(np.isnan(a[0])):
         a[0] = 1e-10 #adjust to prevent nan for the sun
         e[0] = 0
@@ -119,7 +140,7 @@ def xy_to_el(r_vec, P_vec, m):
     rdot = np.sqrt(v**2 - (h / r) ** 2) * sign
 
     sf = a * (1 - e**2) * rdot / (h * e)
-    cf = ((a * (1 - e**2) / r) - 1) / e
+    cf = (a * (1 - e**2) / r - 1) / e
     true_anom = np.arctan2(sf, cf)
     # true_anom = np.arctan2(rdot * r / h * (1 + r), (a * (1 - e**2) - r))
 
@@ -128,6 +149,11 @@ def xy_to_el(r_vec, P_vec, m):
     arg_peri = np.arctan2(sof, cof) - true_anom
     arg_peri = np.mod(arg_peri, 2 * np.pi)
 
+    E = np.arccos((1 - r / a) / e)  # calculate Eccentric Anomaly
+    E = np.where(sign < 0.0, 2 * np.pi - E, E)
+
+    M = E - e * np.sin(E)
+
     if(np.isnan(inclination[0])):
         #adjust to prevent nan for the sun
         inclination[0] = 0
@@ -135,43 +161,42 @@ def xy_to_el(r_vec, P_vec, m):
         arg_peri[0] = 0
         true_anom[0] = 0
 
-    return a, e, inclination, lon_asc_node, arg_peri, true_anom
+    return a, e, inclination, lon_asc_node, arg_peri, true_anom, E, M
 
 
 # Keplerian Drift
 # noinspection PyUnreachableCode
 def kepler_drift(Q, P, E, M, m, a, e, dt, n):
-    a, e, inclination, lon_asc_node, arg_peri, true_anom = xy_to_el(Q, P, m)  # Convert cartesian to orbital elements
+    a, e, inclination, lon_asc_node, arg_peri, true_anom, E, M = xy_to_el(Q, P, m)  # Convert cartesian to orbital elements
+    # sign = np.sign(np.diag(np.tensordot(Q, P / m, axes=[0, 0])))
 
-    for k in range(len(M)):
-        if(np.abs(M[k] + 2 * np.pi - E[k]) < np.abs(M[k] - E[k])):
-            M[k] += 2 * np.pi
+    # n = np.sqrt(mu / a**3)  # Kepler's 3rd law to get the mean motion
+    M += n * dt
 
-    E_tmp = E
-    for i in range(50):  # Break out if a certain accuracy is not achieved after 50 loops
+    # for k in range(len(M)): # to ensure the E - M term in f(E, M) doesn't blow up
+    #     if(np.abs(M[k] + 2 * np.pi - E[k]) < np.abs(M[k] - E[k])):
+    #         M[k] += 2 * np.pi
 
-        E_tmp = E + deltai3(E, M)  # New Eccentric Anomaly
+    # Danby's solver
 
-        if (((E_tmp - E) / E).all() < accuracy):
-            break
+    E_tmp = danby(E, M, e)
 
     dE = E_tmp - E
-    sign = np.sign(np.diag(np.tensordot(Q, P / m, axes=[0, 0])))
-    E_tmp = np.where(sign < 0.0, 2 * np.pi - E_tmp, E_tmp)
-    E_tmp = np.mod(E_tmp, 2 * np.pi)
-
-    r_0 = mag(Q)
-    r = a * (1 - e * np.cos(E_tmp))
 
     # Danby's conversion to cartesian
+    r_0 = mag(Q)
 
     f = f_generate(dE, r_0, a)  # (dE, r_0, a)
     g = g_generate(dE, dt, n)  # (dE, dt, n)
-    f_dot = f_dot_generate(dE, r, r_0, a, n)  # (dE, r, r_0, a, n)
-    g_dot = g_dot_generate(dE, r, a)  # (dE, r, a)
 
     r = f * Q + g * (P / m)  # f and g are arrays
-    v = f_dot * Q + g_dot * P / m
+    r_mag = mag(r)
+
+    f_dot = f_dot_generate(dE, r_mag, r_0, a, n)  # (dE, r, r_0, a, n)
+    g_dot = g_dot_generate(dE, r_mag, a)  # (dE, r, a)
+
+    v = f_dot * Q + g_dot * (P / m)
+    v_mag = mag(v)
 
     return r, m * v, E_tmp, arg_peri, e
 
@@ -182,13 +207,11 @@ def bc_to_hc(b, origin_b, origin_h):
 
     return h  # return heliocentric
 
-
 # convert heliocentric to barycentric
 def hc_to_bc(h, origin_b, origin_h):
     b = h - origin_b + origin_h
 
     return b  # return barycentric
-
 
 # Sun Drift
 def sun_drift(Q, P, M_sun, dt):
@@ -260,7 +283,7 @@ phi = []  # Resonance Angle
 # Arrays defined as [[X1, X2, X3, ... XN], [Y1, Y2, Y3, ... YN], ....]; Avoids .T multiplications
 # Array shape/axes = (time-step, planet, coordinate)
 
-data = pd.read_csv('midterm_input.csv')
+data = pd.read_csv('midterm_input.csv') # '../data/midterm_input.csv
 
 names = np.asarray(data['Object_Name'])
 m = np.asarray(data['mass']) / Msun # mass in Msun
@@ -282,19 +305,9 @@ P = p - (m * P0) / m_tot  # Canonical momentum (Barycentric)
 Q[:,0] = Q0
 P[:,0] = P0  # Add Sun coordinates into array
 
-a, e, inclination, lon_asc_node, arg_peri, true_anom = xy_to_el(Q, P, m)
+a, e, inclination, lon_asc_node, arg_peri, true_anom, E_tmp, M = xy_to_el(Q, P, m)
 
 e_arr = e
-r = mag(Q)
-E_tmp = np.arccos((1 - r / a) / e)
-
-# Check E sign
-for j in range(len(m)):
-    r_vec = Q[:, j]
-    v_vec = P[:, j]
-    sign = np.sign(np.vdot(r_vec, v_vec))
-    if sign < 0.0:
-        E_tmp[j] = 2 * np.pi - E_tmp[j]
 
 M_arr = E_tmp - e * np.sin(E_tmp)
 lambda_plt = arg_peri[2] + M_arr[2]
@@ -340,7 +353,7 @@ while (t_arr[-1] <= t_end):
     t = np.asarray(t_arr[-1])
 
     if (t % (365.25 * 5000) == 0):
-        print("\n\nAt t = {} years".format(t / 365))  # Print time steps
+        print("\n\nAt t = {} years".format(np.int(t / 365))  # Print time steps
 
     # Update Sun Drift
     Q_tmp[:,0] = sun_drift(Q_tmp[:,0], P_tmp[:,0], m[0], dt)
@@ -350,7 +363,17 @@ while (t_arr[-1] <= t_end):
 
     # Update Keplerian positions
 
+    # n = np.sqrt(mu / a**3)  # Kepler's 3rd law to get the mean motion
+    M_tmp = M_tmp + n * dt
+    M_tmp = np.mod(M_tmp, 2 * np.pi)
+
+    Q_0 = Q_tmp[:, 0]
+    P_0 = P_tmp[:, 0]
+
     Q_tmp, P_tmp, E_tmp, arg_peri, e_tmp = kepler_drift(Q_tmp, P_tmp, E_tmp, M_tmp, m, a, e, dt, n)
+
+    Q_tmp[:, 0] = Q_0
+    P_tmp[:, 0] = P_0  # cancel out Kepler drift effects of sun
 
     # Update Interaction velocities again
     P_tmp[:,1:] = int_kick(Q_tmp[:,1:], P_tmp[:,1:], m[1:], dt)  # Use updated half-time-step to kick velocities
@@ -362,14 +385,6 @@ while (t_arr[-1] <= t_end):
 
     # Calculate Energy and Mean Anomaly and Resonance angle
     E_tot = calc_energy(Q_tmp, P_tmp, m)
-
-    # n = np.sqrt(mu / a**3)  # Kepler's 3rd law to get the mean motion
-    M_tmp = M_tmp + n * dt
-    M_tmp = np.mod(M_tmp, 2 * np.pi)
-
-    # for j in range(len(M_tmp)):
-    #     if (M_tmp[j] >= 2 * np.pi):
-    #         M_tmp[j] -= 2 * np.pi
 
 
     M_nep_tmp = M_tmp[1]
@@ -404,11 +419,11 @@ ax2.set_ylabel(r'$\phi$')
 
 plt.show()
 
-plt.plot(t_arr, e_arr, label = names)
+lineObjects = plt.plot(t_arr, e_arr)
 plt.xlabel("Time (years)")
 plt.ylabel("eccentricity (e)")
 
-plt.legend()
+plt.legend(lineObjects, names)
 plt.show()
 
 
