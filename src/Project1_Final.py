@@ -89,11 +89,6 @@ def xy_to_el(r_vec, P_vec, m):
     v_vec = (P_vec / m)
     mu = G * (m + m[0])
 
-    # Calculate h, r, and v magnitudes
-    h = 0
-    r = 0
-    v = 0
-
     h_vec = np.cross(r_vec.T, v_vec.T)
     h_vec = h_vec.T
 
@@ -101,14 +96,14 @@ def xy_to_el(r_vec, P_vec, m):
     hy = h_vec[1]  # y-component of the angular momentum
     hz = h_vec[2]  # z-component of the angular momentum
 
+    # Calculate h, r, and v magnitudes
     h = mag(h_vec)
     r = mag(r_vec)
     v = mag(v_vec)
 
     # Calculate a, e, inclination, lon_asc_node, arg_peri, and true_anom
 
-    a = 2 / r - v ** 2 / mu
-    a = np.abs(1 / a)
+    a = 1 / (2 / r - v ** 2 / mu)
 
     e = np.sqrt(1 - (h ** 2) / (a * mu))
 
@@ -120,10 +115,18 @@ def xy_to_el(r_vec, P_vec, m):
 
     lon_asc_node = np.arctan2(np.sign(hz) * hx, -np.sign(hz) * hy)
 
-    true_anom = np.arctan2(v * r / h * (1 + r), (a * (1 - e**2) - r))
+    sign = np.sign(np.diag(np.tensordot(r_vec, v_vec, axes=[0, 0])))
+    rdot = np.sqrt(v**2 - (h / r) ** 2) * sign
 
-    # arg_peri = np.arcsin(r_vec[2] / (r * np.sin(inclination))) - true_anom
-    arg_peri = np.arctan2(-1 * hx, hy)
+    sf = a * (1 - e**2) * rdot / (h * e)
+    cf = ((a * (1 - e**2) / r) - 1) / e
+    true_anom = np.arctan2(sf, cf)
+    # true_anom = np.arctan2(rdot * r / h * (1 + r), (a * (1 - e**2) - r))
+
+    sof = r_vec[2] / (r * np.sin(inclination))  # sin(omega + f)
+    cof = (r_vec[0] / r + np.sin(lon_asc_node) * sof * np.cos(inclination)) / np.cos(lon_asc_node)  # cos(omega + f)
+    arg_peri = np.arctan2(sof, cof) - true_anom
+    arg_peri = np.mod(arg_peri, 2 * np.pi)
 
     if(np.isnan(inclination[0])):
         #adjust to prevent nan for the sun
@@ -153,6 +156,8 @@ def kepler_drift(Q, P, E, M, m, a, e, dt, n):
             break
 
     dE = E_tmp - E
+    sign = np.sign(np.diag(np.tensordot(Q, P / m, axes=[0, 0])))
+    E_tmp = np.where(sign < 0.0, E_tmp - 2 * np.pi, E_tmp)
     E_tmp = np.mod(E_tmp, 2 * np.pi)
 
     r_0 = mag(Q)
@@ -255,7 +260,7 @@ phi = []  # Resonance Angle
 # Arrays defined as [[X1, X2, X3, ... XN], [Y1, Y2, Y3, ... YN], ....]; Avoids .T multiplications
 # Array shape/axes = (time-step, planet, coordinate)
 
-data = pd.read_csv('../data/midterm_input.csv')
+data = pd.read_csv('midterm_input.csv')
 
 names = np.asarray(data['Object_Name'])
 m = np.asarray(data['mass']) / Msun # mass in Msun
@@ -268,7 +273,6 @@ p = m * np.asarray([data['VX'], data['VY'], data['VZ']])
 
 m_tot = np.sum(m)
 
-# CHECK
 Q0 = np.sum((m * q), axis = 0) / m_tot  # Calculate sun initial canonical coordinates
 P0 = np.sum(p, axis = 0)
 
@@ -288,7 +292,8 @@ E_tmp = np.arccos((1 - r / a) / e)
 for j in range(len(m)):
     r_vec = Q[:, j]
     v_vec = P[:, j]
-    if np.sign(np.vdot(r_vec, v_vec)) < 0.0:
+    sign = np.sign(np.vdot(r_vec, v_vec))
+    if sign < 0.0:
         E_tmp[j] = E_tmp[j] - 2 * np.pi
 
 M_arr = E_tmp - e * np.sin(E_tmp)
@@ -358,6 +363,7 @@ while (t_arr[-1] <= t_end):
     # Calculate Energy and Mean Anomaly and Resonance angle
     E_tot = calc_energy(Q_tmp, P_tmp, m)
 
+    # n = np.sqrt(mu / a**3)  # Kepler's 3rd law to get the mean motion
     M_tmp = M_tmp + n * dt
     M_tmp = np.mod(M_tmp, 2 * np.pi)
 
@@ -398,11 +404,11 @@ ax2.set_ylabel(r'$\phi$')
 
 plt.show()
 
-# plt.plot(t_arr, e_arr, label = names)
-# plt.xlabel("Time (years)")
-# plt.ylabel("eccentricity (e)")
-#
-# plt.legend()
-# plt.show()
+plt.plot(t_arr, e_arr, label = names)
+plt.xlabel("Time (years)")
+plt.ylabel("eccentricity (e)")
+
+plt.legend()
+plt.show()
 
 
