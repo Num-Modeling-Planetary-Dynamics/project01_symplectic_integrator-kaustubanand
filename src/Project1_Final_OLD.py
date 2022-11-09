@@ -9,7 +9,7 @@ import pandas as pd
 
 # Units are AU and days and Msun
 
-t_end = 365.25 * (10 ** 5)  # days
+t_end = 365 * 10 ** 5  # days
 Msun = 1.98850e6 # in 10^24 kg
 G = 2.98e-4  # Scaled to the AU-days-Msun system
 dt = 365.25 * 5  # days # use a fixed time step
@@ -82,22 +82,24 @@ def g_dot_generate(dE, r, a):
 
     return g_dot
 
-def danby(M, e):
+def danby(E0, M, e):
     k = 0.85 # initial guess
 
     E = M + np.sign(np.sin(M)) * e * k
     for i in range(100): # Break out if a certain accuracy is not achieved after 50 loops
         Enew = E + deltai3(E, M, e)
         error = np.abs((Enew - E) / E)
-        error_check = error[1:] <= accuracy # error of only the planets
-
-        if(np.all(error_check)):
-            return Enew
+        if(error.all() <= accuracy):
+            # return Enew
+            # Accuracy statement doesn't work for some reason
+            break
         E = Enew
 
-    print(f'E = {E}; Enew = {Enew}')
-    print(f'Error = {error}')
-    raise RuntimeError("The Danby function did not converge on a solution")
+    return Enew
+
+    # print(f'E = {E}; Enew = {Enew}')
+    # print(f'Error = {error}')
+    # raise RuntimeError("The Danby function did not converge on a solution")
 
 # convert cartesian to orbital elements
 def xy_to_el(r_vec, P_vec, m):
@@ -152,9 +154,6 @@ def xy_to_el(r_vec, P_vec, m):
 
     M = E - e * np.sin(E)
 
-    varpi = np.mod(arg_peri + lon_asc_node, 2 * np.pi)
-    lam = np.mod(arg_peri + lon_asc_node + M, 2 * np.pi)
-
     if(np.isnan(inclination[0])):
         #adjust to prevent nan for the sun
         inclination[0] = 0
@@ -162,21 +161,25 @@ def xy_to_el(r_vec, P_vec, m):
         arg_peri[0] = 0
         true_anom[0] = 0
 
-    return a, e, inclination, lon_asc_node, arg_peri, true_anom, E, M, np.rad2deg(lam), np.rad2deg(varpi)
+    return a, e, inclination, lon_asc_node, arg_peri, true_anom, E, M
 
 
 # Keplerian Drift
 # noinspection PyUnreachableCode
 def kepler_drift(Q, P, E, M, m, a, e, dt, n):
-    a, e, inclination, lon_asc_node, arg_peri, true_anom, E, M, lam, varpi = xy_to_el(Q, P, m)  # Convert cartesian to orbital elements
+    a, e, inclination, lon_asc_node, arg_peri, true_anom, E, M = xy_to_el(Q, P, m)  # Convert cartesian to orbital elements
     # sign = np.sign(np.diag(np.tensordot(Q, P / m, axes=[0, 0])))
 
     # n = np.sqrt(mu / a**3)  # Kepler's 3rd law to get the mean motion
-    M = M + n * dt
+    M += n * dt
+
+    # for k in range(len(M)): # to ensure the E - M term in f(E, M) doesn't blow up
+    #     if(np.abs(M[k] + 2 * np.pi - E[k]) < np.abs(M[k] - E[k])):
+    #         M[k] += 2 * np.pi
 
     # Danby's solver
 
-    E_tmp = danby(M, e)
+    E_tmp = danby(E, M, e)
 
     dE = E_tmp - E
 
@@ -195,35 +198,25 @@ def kepler_drift(Q, P, E, M, m, a, e, dt, n):
     v = f_dot * Q + g_dot * (P / m)
     v_mag = mag(v)
 
-    # r_nep = Q[:, 1]
-    # r_plt = Q[:, 2]
-    # r_diff = mag(r_nep - r_plt)
-    # if (r_diff < 2):
-    #     print("hello there")
-
-    return r, m * v, E_tmp, arg_peri, e, lam, varpi
+    return r, m * v, E_tmp, arg_peri, e
 
 
 # convert barycentric to heliocentric
-def bc_to_hc(vec_b, m_tot, m):
-    origin_h = -np.sum(m * vec_b, axis = 1) / m[0] # m[0] = mass of the sun
-    vec_h = vec_b - origin_h
+def bc_to_hc(b, origin_b, origin_h):
+    h = b + origin_b - origin_h
 
-    return vec_h  # return heliocentric
+    return h  # return heliocentric
 
 # convert heliocentric to barycentric
-def hc_to_bc(vec_h, m_tot, m):
-    origin_b = -np.sum(m * vec_h, axis = 1) / (m_tot)
-    vec_b = vec_h + origin_b
+def hc_to_bc(h, origin_b, origin_h):
+    b = h - origin_b + origin_h
 
-    return vec_b  # return barycentric
+    return b  # return barycentric
 
 # Sun Drift
-def sun_drift(Q, P, m, dt):
-    # Q_dot = P / M_sun
-    V = P / m
-    Q_dot = np.sum(m * V, axis = 1) / (1) # 1 = Msun in Msun units; m to scale momentum back to velocity
-    Q_tmp = (Q.T + Q_dot * dt / 2).T
+def sun_drift(Q, P, M_sun, dt):
+    Q_dot = P / M_sun
+    Q_tmp = Q + Q_dot * dt / 2
 
     return Q_tmp
 
@@ -233,14 +226,14 @@ def int_kick(Q, P, m, dt):
     # acceleration is gravitational acc.
 
     for i in range(len(m)):
-        force = 0
+        acc = 0
         for j in range(len(m)):
             if (i == j):
                 continue
 
-            force += G * m[j] * m[i] / np.power(mag(Q[:,i] - Q[:,j]), 3) * (Q[:,j] - Q[:,i])  # Force calculation
+            acc += G * m[j] * m[i] / np.power(mag(Q[:,i] - Q[:,j]), 3) * (Q[:,j] - Q[:,i])  # Force calculation
 
-        P[:,i] = P[:,i] + force * dt / 2
+        P[:,i] = P[:,i] + acc * dt / 2
 
     return P
 
@@ -303,26 +296,23 @@ p = m * np.asarray([data['VX'], data['VY'], data['VZ']])
 
 m_tot = np.sum(m)
 
-Q0 = np.sum((m * q), axis = 1) / m_tot  # Calculate sun initial canonical coordinates
-P0 = np.sum(p, axis = 1)
+Q0 = np.sum((m * q), axis = 0) / m_tot  # Calculate sun initial canonical coordinates
+P0 = np.sum(p, axis = 0)
 
 Q = np.array(q) - q[:,0]  # Canonical position (Heliocentric)
-P = hc_to_bc(p, m_tot, m) # Canonical momentum (Barycentric)
-V = P / m
-
-# p - (m * P0) / m_tot
+P = p - (m * P0) / m_tot  # Canonical momentum (Barycentric)
 
 Q[:,0] = Q0
 P[:,0] = P0  # Add Sun coordinates into array
 
-a, e, inclination, lon_asc_node, arg_peri, true_anom, E_tmp, M, lam, varpi = xy_to_el(Q, P, m)
+a, e, inclination, lon_asc_node, arg_peri, true_anom, E_tmp, M = xy_to_el(Q, P, m)
 
 e_arr = e
 
 M_arr = E_tmp - e * np.sin(E_tmp)
-lambda_plt = lam[2]
-lambda_nep = lam[1]
-phi_tmp = 3 * lambda_plt - 2 * lambda_nep - varpi[2]
+lambda_plt = arg_peri[2] + M_arr[2]
+lambda_nep = arg_peri[1] + M_arr[1]
+phi_tmp = 3 * lambda_plt - 2 * lambda_nep - arg_peri[2]
 
 t_arr = np.append(t_arr, np.array([0]), axis=0)
 E_err = np.asarray([0])
@@ -347,10 +337,12 @@ p = np.asarray([p])
 # Do integration
 while (t_arr[-1] <= t_end):
 
-    # origin_b = np.sum((m * p[-1]), axis = 0) / m_tot  # calc barycentric origin
-    # origin_h = m * Q[-1][0]# calc heliocentric origin
+    origin_b = np.sum((m * p[-1])) / m_tot  # HOW TO calc barycentric origin
+    origin_h = np.sum((m * Q[-1])) / m_tot  # calc heliocentric origin
 
     t_current = t_arr[-1]
+
+    # for i in range(num_planets):
 
     # Define temp variables for each time step
     Q_tmp = np.asarray(Q[-1])
@@ -361,27 +353,24 @@ while (t_arr[-1] <= t_end):
     t = np.asarray(t_arr[-1])
 
     if (t % (365.25 * 5000) == 0):
-        time_step = np.rint((t_current / 365.25) / 1000) * 1000
-        print("\n\nAt t ~ {} years".format(time_step))  # Print time steps
+        print("\n\nAt t = {} years".format(np.int(t / 365))  # Print time steps
 
-    # if(t % (365.25 * 10000) == 0):
-    #     print("check values")
-
-    # Update Linear Drift
-    Q_tmp[:,1:] = sun_drift(Q_tmp[:,1:], P_tmp[:,1:], m[1:], dt)
+    # Update Sun Drift
+    Q_tmp[:,0] = sun_drift(Q_tmp[:,0], P_tmp[:,0], m[0], dt)
 
     # Update Interaction Velocities Kick
     P_tmp[:,1:] = int_kick(Q_tmp[:,1:], P_tmp[:,1:], m[1:], dt)
 
     # Update Keplerian positions
 
+    # n = np.sqrt(mu / a**3)  # Kepler's 3rd law to get the mean motion
     M_tmp = M_tmp + n * dt
     M_tmp = np.mod(M_tmp, 2 * np.pi)
 
     Q_0 = Q_tmp[:, 0]
     P_0 = P_tmp[:, 0]
 
-    Q_tmp, P_tmp, E_tmp, arg_peri, e_tmp, lam_tmp, varpi_tmp = kepler_drift(Q_tmp, P_tmp, E_tmp, M_tmp, m, a, e, dt, n)
+    Q_tmp, P_tmp, E_tmp, arg_peri, e_tmp = kepler_drift(Q_tmp, P_tmp, E_tmp, M_tmp, m, a, e, dt, n)
 
     Q_tmp[:, 0] = Q_0
     P_tmp[:, 0] = P_0  # cancel out Kepler drift effects of sun
@@ -389,28 +378,30 @@ while (t_arr[-1] <= t_end):
     # Update Interaction velocities again
     P_tmp[:,1:] = int_kick(Q_tmp[:,1:], P_tmp[:,1:], m[1:], dt)  # Use updated half-time-step to kick velocities
 
-    # Linear Drift again
-    Q_tmp[:,1:] = sun_drift(Q_tmp[:,1:], P_tmp[:,1:], m[1:], dt)
+    # Update Sun again
+    Q_tmp[:,0] = sun_drift(Q_tmp[:,0], P_tmp[:,0], m[0], dt)
 
-    P_h = bc_to_hc(P_tmp, m_tot, m) # Convert barycentric velocity/mom to heliocentric velocity/mom
+    P_h = bc_to_hc(P_tmp, origin_b, origin_h)  # Convert barycentric velocity/mom to heliocentric velocity/mom
 
     # Calculate Energy and Mean Anomaly and Resonance angle
     E_tot = calc_energy(Q_tmp, P_tmp, m)
 
-    lambda_nep = lam_tmp[1]
-    lambda_plt = lam_tmp[2]
-    phi_tmp = np.mod(3 * lambda_plt - 2 * lambda_nep - varpi_tmp[2], 360)
 
-    # append values into respective arrays
+    M_nep_tmp = M_tmp[1]
+    M_plt_tmp = M_tmp[2]
+    lambda_nep = M_nep_tmp + arg_peri[1]
+    lambda_plt = M_plt_tmp + arg_peri[2]
+    phi_tmp = 3 * lambda_plt - 2 * lambda_nep - arg_peri[2]
+
     Q = np.append(Q, np.asarray([Q_tmp]), axis=0)
     P = np.append(P, np.asarray([P_h]), axis=0)
     P_bc = np.append(P, np.asarray([P_tmp]), axis=0)
-    E_err = np.append(E_err, np.abs((E_tot - E_tot_0) / E_tot_0))
+    E_err = np.append(E_err, ((E_tot - E_tot_0) / E_tot_0))
     E = np.append(E, np.asarray([E_tmp]), axis=0)
     M_arr = np.append(M_arr, np.asarray([M_tmp]), axis=0)
     e_arr = np.append(e_arr, np.asarray([e_tmp]), axis=0)
-    M_nep = np.append(M_nep, M[1])
-    M_plt = np.append(M_plt, M[2])
+    M_nep = np.append(M_nep, M_nep_tmp)
+    M_plt = np.append(M_plt, M_plt_tmp)
     phi = np.append(phi, phi_tmp)
     t_arr = np.append(t_arr, t + dt)
 
@@ -428,7 +419,7 @@ ax2.set_ylabel(r'$\phi$')
 
 plt.show()
 
-lineObjects = plt.plot(t_arr / 365.25, e_arr)
+lineObjects = plt.plot(t_arr, e_arr)
 plt.xlabel("Time (years)")
 plt.ylabel("eccentricity (e)")
 
