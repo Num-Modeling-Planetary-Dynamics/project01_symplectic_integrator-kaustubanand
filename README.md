@@ -13,20 +13,16 @@ I have submitted the final code and initial conditions data used for the Symplec
 
 ~~The plots submitted on Brightspace are of the Energy error values and Resonance Angle until the code breaks down into `NaNs` after a ~200 Earth Years.~~
 
-**The code now runs for the full time!**  The resonance angle seems bounded and the energy error is really small. The $e$ vs $t$ plots created at the end show that the eccentricity stays under 1 the whole time.
+**The code now runs for the full time!**  The energy error is really small (~ 1e-5) and bounded. The $e$ vs $t$ plots created at the end show that the eccentricity is correct.
 
-My implementation of the Danby solver was incorrect.
+My implementation of the Danby solver was incorrect. The resonance angle oscillates between 0$\degree$ and 360$\degree$, and not in the correect range of ~ 80$\degree$ and 260$\degree$.
 
 Below are the main issues I ran into, and why i believe the code doesn't work well:
 
 - The Heliocentric to Barycentric origin calculation and thus conversion is incorrect. It leads to abnormlly large values for the momentum.
   - I have avoided this by keeping a separate barycentric momentum array for calculations.
-- ~~There is an incorrect calculation for the eccentricity of Neptune that goes over 1 and thus gives `NaN` values. This further gives `NaN` values for other quantities.~~
-  - ~~The Danby $f$ and $g$ functions might be calculating the position vector ($r$) and/or velocity vector ($v$) with a high error at some time step around 72000 days.~~
-  - ~~While the magnitude of other quantities stay almost the same, the position vector update statement leads to a rapid increase in the magnitude of the $r$ vector.~~ 
 
-
-# =====================
+# =================================
 
 
 Write a symplectic n-body integrator. You may use either Jacobi coordinates or democractic heliocentric coordinates, but be sure to use the correct form of the Hamiltonian depending on which method you use. Only implement the basic symplectic integrator, so do not worry about close encounters. Simulate the orbit of Pluto and Neptune for $10^5$ years. Produce plots of the total change in the system energy, $\Delta\mathcal{E}/\mathcal{E}_0$ and the resonance angle $\phi=3\lambda_P-2\lambda_N-\varpi_P$ vs. time, where $\lambda=M+\varpi$ is the *mean anomaly* and submit them, along with a brief description of the results to Brightspace. All code and data should be submitted via GitHub.
@@ -48,7 +44,7 @@ This method was developed for the Symplectic Massive Body Algorithm (SyMBA), whi
 
 
 The Hamiltonian is given by:
-$ \mathcal{H} =\mathcal{H}_{Kepler} + \mathcal{H}_{Interaction} +\mathcal{H}_{Sun} $
+$$ \mathcal{H} =\mathcal{H}_{Kepler} + \mathcal{H}_{Interaction} +\mathcal{H}_{Sun} $$
 
 Defining the central body as index $0$, and the smaller bodies (the planets) as bodies $1...n$, each of the component Hamiltonians can be written as:
 
