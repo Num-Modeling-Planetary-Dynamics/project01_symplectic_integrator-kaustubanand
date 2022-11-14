@@ -135,6 +135,7 @@ def xy_to_el(r_vec, P_vec, m):
     lon_asc_node = np.arctan2(np.sign(hz) * hx, -np.sign(hz) * hy)
 
     sign = np.sign(np.diag(np.tensordot(r_vec, v_vec, axes=[0, 0])))
+
     rdot = np.sqrt(v**2 - (h / r) ** 2) * sign
 
     sf = a * (1 - e**2) * rdot / (h * e)
@@ -145,15 +146,17 @@ def xy_to_el(r_vec, P_vec, m):
     sof = r_vec[2] / (r * np.sin(inclination))  # sin(omega + f)
     cof = (r_vec[0] / r + np.sin(lon_asc_node) * sof * np.cos(inclination)) / np.cos(lon_asc_node)  # cos(omega + f)
     arg_peri = np.arctan2(sof, cof) - true_anom
-    arg_peri = np.mod(arg_peri, 2 * np.pi)
+    # arg_peri = np.mod(arg_peri, 2 * np.pi)
 
     E = np.arccos((1 - r / a) / e)  # calculate Eccentric Anomaly
     E = np.where(sign < 0.0, 2 * np.pi - E, E)
 
     M = E - e * np.sin(E)
 
-    varpi = np.mod(arg_peri + lon_asc_node, 2 * np.pi)
-    lam = np.mod(arg_peri + lon_asc_node + M, 2 * np.pi)
+    n = np.sqrt(mu / a ** 3)  # Kepler's 3rd law to get the mean motion
+
+    varpi = arg_peri + lon_asc_node
+    lam = arg_peri + lon_asc_node + M
 
     if(np.isnan(inclination[0])):
         #adjust to prevent nan for the sun
@@ -162,16 +165,15 @@ def xy_to_el(r_vec, P_vec, m):
         arg_peri[0] = 0
         true_anom[0] = 0
 
-    return a, e, inclination, lon_asc_node, arg_peri, true_anom, E, M, np.rad2deg(lam), np.rad2deg(varpi)
+    return a, e, inclination, lon_asc_node, arg_peri, true_anom, E, M, np.rad2deg(lam), np.rad2deg(varpi), n
 
 
 # Keplerian Drift
 # noinspection PyUnreachableCode
-def kepler_drift(Q, P, E, M, m, a, e, dt, n):
-    a, e, inclination, lon_asc_node, arg_peri, true_anom, E, M, lam, varpi = xy_to_el(Q, P, m)  # Convert cartesian to orbital elements
+def kepler_drift(Q, P, m, dt):
+    a, e, inclination, lon_asc_node, arg_peri, true_anom, E, M, lam, varpi, n = xy_to_el(Q, P, m)  # Convert cartesian to orbital elements
     # sign = np.sign(np.diag(np.tensordot(Q, P / m, axes=[0, 0])))
 
-    # n = np.sqrt(mu / a**3)  # Kepler's 3rd law to get the mean motion
     M = M + n * dt
 
     # Danby's solver
@@ -193,13 +195,6 @@ def kepler_drift(Q, P, E, M, m, a, e, dt, n):
     g_dot = g_dot_generate(dE, r_mag, a)  # (dE, r, a)
 
     v = f_dot * Q + g_dot * (P / m)
-    v_mag = mag(v)
-
-    # r_nep = Q[:, 1]
-    # r_plt = Q[:, 2]
-    # r_diff = mag(r_nep - r_plt)
-    # if (r_diff < 2):
-    #     print("hello there")
 
     return r, m * v, E_tmp, arg_peri, e, lam, varpi
 
@@ -232,15 +227,27 @@ def sun_drift(Q, P, m, dt):
 def int_kick(Q, P, m, dt):
     # acceleration is gravitational acc.
 
-    for i in range(len(m)):
+    for i in range(len(m)): # interaction force on this planet
         force = 0
-        for j in range(len(m)):
+        for j in range(len(m)): # cycle through remaining planets in the system
             if (i == j):
                 continue
-
-            force += G * m[j] * m[i] / np.power(mag(Q[:,i] - Q[:,j]), 3) * (Q[:,j] - Q[:,i])  # Force calculation
+            r_vec = Q[:, j] - Q[:, i]
+            force += G * m[j] * m[i] / np.power(mag(r_vec), 3) * r_vec # Force calculation
 
         P[:,i] = P[:,i] + force * dt / 2
+
+    # rvec = Q.T
+    # for i in range(len(m)):
+    #
+    #     drvec = rvec - rvec[i, :]
+    #     irij3 = np.linalg.norm(drvec, axis=1) ** 3
+    #     irij3[i] = 1  # Diagonal should not be included in the sum
+    #     irij3 = G * m / irij3
+    #
+    #     acc = np.sum(drvec.T * irij3, axis=1)
+    #
+    #     P[:,i] += m[i] * acc * dt / 2
 
     return P
 
@@ -310,19 +317,21 @@ Q = np.array(q) - q[:,0]  # Canonical position (Heliocentric)
 P = hc_to_bc(p, m_tot, m) # Canonical momentum (Barycentric)
 V = P / m
 
-# p - (m * P0) / m_tot
-
 Q[:,0] = Q0
 P[:,0] = P0  # Add Sun coordinates into array
 
-a, e, inclination, lon_asc_node, arg_peri, true_anom, E_tmp, M, lam, varpi = xy_to_el(Q, P, m)
+a, e, inclination, lon_asc_node, arg_peri, true_anom, E_tmp, M, lam, varpi, n = xy_to_el(Q, P, m)
 
 e_arr = e
 
 M_arr = E_tmp - e * np.sin(E_tmp)
 lambda_plt = lam[2]
 lambda_nep = lam[1]
-phi_tmp = 3 * lambda_plt - 2 * lambda_nep - varpi[2]
+phi_tmp = np.mod(3 * lambda_plt - 2 * lambda_nep - varpi[2], 360)
+
+ln_arr = [lambda_nep]
+lp_arr = [lambda_plt]
+vplt_arr = [varpi[2]]
 
 t_arr = np.append(t_arr, np.array([0]), axis=0)
 E_err = np.asarray([0])
@@ -375,13 +384,13 @@ while (t_arr[-1] <= t_end):
 
     # Update Keplerian positions
 
-    M_tmp = M_tmp + n * dt
-    M_tmp = np.mod(M_tmp, 2 * np.pi)
+    # M_tmp = M_tmp + n * dt
+    # M_tmp = np.mod(M_tmp, 2 * np.pi)
 
     Q_0 = Q_tmp[:, 0]
     P_0 = P_tmp[:, 0]
 
-    Q_tmp, P_tmp, E_tmp, arg_peri, e_tmp, lam_tmp, varpi_tmp = kepler_drift(Q_tmp, P_tmp, E_tmp, M_tmp, m, a, e, dt, n)
+    Q_tmp, P_tmp, E_tmp, arg_peri, e_tmp, lam_tmp, varpi_tmp = kepler_drift(Q_tmp, P_tmp, m, dt)
 
     Q_tmp[:, 0] = Q_0
     P_tmp[:, 0] = P_0  # cancel out Kepler drift effects of sun
@@ -400,6 +409,10 @@ while (t_arr[-1] <= t_end):
     lambda_nep = lam_tmp[1]
     lambda_plt = lam_tmp[2]
     phi_tmp = np.mod(3 * lambda_plt - 2 * lambda_nep - varpi_tmp[2], 360)
+
+    ln_arr.append(lambda_nep)
+    lp_arr.append(lambda_plt)
+    vplt_arr.append(varpi_tmp[2])
 
     # append values into respective arrays
     Q = np.append(Q, np.asarray([Q_tmp]), axis=0)
@@ -421,11 +434,16 @@ fig, (ax1, ax2) = plt.subplots(2)
 ax1.plot(t_arr / 365.25, E_err)
 ax2.plot(t_arr / 365.25, phi)
 
+# ax2.plot(t_arr / 365.25, ln_arr, label = 'Lam Neptune', alpha = 0.6)
+# ax2.plot(t_arr / 365.25, lp_arr, label = 'Lam Pluto', alpha = 0.6)
+# ax2.plot(t_arr / 365.25, vplt_arr, label = 'Varpi Pluto', alpha = 0.6)
+
 ax1.set_xlabel(f"Time (years); dt = {np.round(dt / 365, 0)} years")
 ax2.set_xlabel(f"Time (years); dt = {np.round(dt / 365, 0)} years")
 ax1.set_ylabel(r'$\Delta \epsilon / \epsilon_0$')
 ax2.set_ylabel(r'$\phi$')
 
+# plt.legend()
 plt.show()
 
 lineObjects = plt.plot(t_arr / 365.25, e_arr)
