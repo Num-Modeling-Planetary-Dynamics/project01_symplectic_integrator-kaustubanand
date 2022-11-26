@@ -36,9 +36,9 @@ the $f$ and $g$ functions to convert eccentric anomaly, $E$, from Kepler's equat
 
 - Place your source code in the `src` folder of your repository. Output all data to the `data` folder of the repository and place all figures you generate in `plots` (*Note: contents of the `plots` folder will be ignored by GitHub*)
 
-- G
 
-#### The Democratic Heliocentric Method
+
+### The Democratic Heliocentric Method
 
 This method was developed for the Symplectic Massive Body Algorithm (SyMBA), which can handle close encounters between massive bodies by reducing the step size of the integration of any bodies that are so close that the interaction part of the Hamiltonian is large relative to the Kepler part for a given step size. However, the fixed step size version works well as an alternative to Wisdom and Holman's Mixed Variable Symplectic map (see below). Its advantage is that the coordinate system is easier to deal with, though because of the additional Hamiltonian it requires slighty more computational work per step than the MVS method.
 
@@ -93,7 +93,7 @@ Reference
 
   
 
-#### The Mixed Variable Symplectic Map
+### The Mixed Variable Symplectic Map
 
 The Wisdom-Holman mixed variable symplectic map (sometimes called the MVS method) is described in Wisdom & Holman (1991). This method is used when there is a dominant central body (such as the Sun) and the smaller bodies (such as the planets) are distant enough from each other that their gravitational interaction always remains small relative to the Sun. 
 
