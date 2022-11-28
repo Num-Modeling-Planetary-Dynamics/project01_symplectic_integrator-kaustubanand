@@ -25,6 +25,8 @@ I have submitted an updated code for the Symplectic Integrator project. Here are
 
 - The energy error is unbounded and rising, however it is **an order of magnitude smaller** than the energy error in the previous code.
   - There may be an error in the calculation. The orbital elements show the correct growth over time.
+- The eccentricity of Pluto is flat, and does not vary much.
+  - There might be an issue in the variable vector updates.
 
 # =================================
 

@@ -261,7 +261,7 @@ class Symplectic_Integrator:
         H_int = 0
         for i in range(len(self.names) - 1):
             for j in range(i + 1, len(self.names)):
-                dr_vec = r_vec[i] - r_vec[j]
+                dr_vec = r_vec[j] - r_vec[i]
                 H_int -= self.G * mass[j] * mass[i] / self.mag(dr_vec)
 
         # Sun Hamiltonian
@@ -341,10 +341,8 @@ class Symplectic_Integrator:
         """
         Calculates the kick from body-to-body interactions
 
-        Input Parameters:
-
-        Output Parameters:
-
+        Output:
+            Updates the barycentric velocity with an interaction kick
 
         """
         for i in range(len(self.names)):  # interaction force on this planet
@@ -521,7 +519,7 @@ class Symplectic_Integrator:
         self.calc_energy()
         self.xv_elements.append(xv_tmp)
         self.el_elements.append(self.el_elements_tmp)
-        self.E_err.append(np.abs((self.energy[-1] - self.energy[0]) / self.energy[0]))
+        self.E_err.append((self.energy[-1] - self.energy[0]) / self.energy[0])
         self.phi.append(self.calc_phi())
 
         return
@@ -713,7 +711,7 @@ class Symplectic_Integrator:
         self.data = self.data.assign(phi = (['t'], extra_data['phi']))
 
         self.data['energy'] = self.data['energy'].assign_attrs(long_name='energy of the system', units='Msun*AU^2/day^2')
-        self.data['E_err'] = self.data['E_err'].assign_attrs(long_name='relative energy error', units='dimensionless')
+        self.data['E_err'] = self.data['E_err'].assign_attrs(long_name='$\Delta\mathcal{E}/\mathcal{E}_0$', units='dimensionless')
         self.data['phi'] = self.data['phi'].assign_attrs(long_name='Neptune-Pluto resonance angle', units='degrees')
 
         return
@@ -760,4 +758,4 @@ if __name__ == '__main__':
     symp.plot('phi')
     symp.plot('e')
     symp.plot('a')
-    symp.data.to_netcdf('../data/kaustub_symp_intr_run_data.nc', mode = 'w')
+    symp.data.to_netcdf('../data/kaustub_symp_intr_run_data_.nc', mode = 'w')
