@@ -759,3 +759,5 @@ if __name__ == '__main__':
     symp.plot('E_err')
     symp.plot('phi')
     symp.plot('e')
+    symp.plot('a')
+    symp.data.to_netcdf('../data/kaustub_symp_intr_run_data.nc', mode = 'w')

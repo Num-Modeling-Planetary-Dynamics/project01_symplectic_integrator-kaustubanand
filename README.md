@@ -2,25 +2,29 @@
 | EAPS 591 - Numerical Modeling of Planetary Orbits | Fall 2022 | Prof. David Minton |
 | ----------------------------- | --------- | ------------------ |
 # Project 1 - Write your own symplectic integrator
-###### *Due: Friday, Oct. 14, 2022 by 5:00pm*
+#### *Due: Friday, Oct. 14, 2022 by 5:00pm*
 
 # =====================
 
 # Kaustub Anand Notes
 
 
-I have submitted the final code and initial conditions data used for the Symplectic Integrator project. I used the Democratic Heliocentric Method. It is set up to run automatically and is set up to use $AU-Days-M_{sun}$ as the units. The arrays defined as [[X1, X2, X3, ... XN], [Y1, Y2, Y3, ... YN], ....] with a dimensions/shape as (time-step, cartesian coordinate, planet). The dataset I use is from JPL Horizons from Oct 12, 2022.
+I have submitted an updated code for the Symplectic Integrator project. Here are the notes:
+- I used the Democratic Heliocentric Method in units of $AU-Days-M_{sun}$.
+- The code is set up with documentation for each function and is OOP-based.
+- The arrays/lists are in dimensions of (time-step, planet, coordinate vector). 
+- The final data is exported to xarrays for easy plotting and manipulation after the integration.
+  - I also export the data as a .nc file for analysis without having to run the code every time.
+- The code requires 3 initial input parameters:
+  - 'date' : the starting date for the integrator. JPL Horizons data is extracted for the bodies from this date. (YYYY-MM-DD format)
+  - 't_end' : length of time the integrator is run for. (days)
+  - 'names' : names of the bodies to be integrated.
+- The resonance angle is bounded and librates about 180$\degree$ between ~ 80$\degree$ and 260$\degree$.
 
-~~The plots submitted on Brightspace are of the Energy error values and Resonance Angle until the code breaks down into `NaNs` after a ~200 Earth Years.~~
+## Below are the main issues:
 
-**The code now runs for the full time!**  The energy error is really small (~ 1e-5) and bounded. The $e$ vs $t$ plots created at the end show that the eccentricity is correct.
-
-My implementation of the Danby solver was incorrect. The resonance angle oscillates between 0$\degree$ and 360$\degree$, and not in the correect range of ~ 80$\degree$ and 260$\degree$.
-
-Below are the main issues I ran into, and why i believe the code doesn't work well:
-
-- The Heliocentric to Barycentric origin calculation and thus conversion is incorrect. It leads to abnormlly large values for the momentum.
-  - I have avoided this by keeping a separate barycentric momentum array for calculations.
+- The energy error is unbounded and rising, however it is **an order of magnitude smaller** than the energy error in the previous code.
+  - There may be an error in the calculation. The orbital elements show the correct growth over time.
 
 # =================================
 
