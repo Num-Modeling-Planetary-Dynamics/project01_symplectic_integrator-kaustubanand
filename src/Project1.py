@@ -53,7 +53,7 @@ class Symplectic_Integrator:
         self.msun = 1 # Msun units
         self.el_elements = []
         self.dt = 5 * 365.25  # 5 years
-        self.G = 2.98e-4 # AU^2 / Days^3
+        self.G = 0.00029591220819207774 # AU^2 / Days^3
 
         # Plotting variables
         self.E_err = []
@@ -69,10 +69,10 @@ class Symplectic_Integrator:
 
         self.m_tot = self.msun + np.sum(self.m)
 
+        # convert heliocentric velocity to barycentric velocity
+        vb_vec = self.hc_to_bc(np.array(self.xv_elements)[:,3:6], self.m)
         for i in range(len(names)):
-            # convert heliocentric velocity to barycentric velocity
-            self.xv_elements[i][3:6] = self.hc_to_bc(self.xv_elements[i][3:6], self.mu[i])
-
+            self.xv_elements[i][3:6] = vb_vec[i]
             # calculate orbital elements
             self.el_elements.append(self.xy_to_el(self.xv_elements[i][0:3], self.xv_elements[i][3:6], self.mu[i]))
 
@@ -122,7 +122,7 @@ class Symplectic_Integrator:
 
         # Calculate a, e, i, Omega, omega, and f
 
-        a = 1 / (2 / r - v ** 2 / mu)
+        a = 1.0 / (2.0 / r - (v ** 2) / mu)
 
         e = np.sqrt(1 - (h ** 2) / (a * mu))
 
@@ -146,8 +146,10 @@ class Symplectic_Integrator:
         omega = np.arctan2(sof, cof) - f
         omega = np.mod(omega, 2 * np.pi)
 
-        E = np.arccos((1 - r / a) / e) # calculate Eccentric Anomaly
-        E = np.where(sign < 0.0, 2 * np.pi - E, E)
+        # E = np.arccos((1 - r / a) / e) # calculate Eccentric Anomaly
+        E = np.arccos(-(r - a) / (a * e))
+        if(sign < 0.0):
+            E = 2 * np.pi - E
 
         M = E - e * np.sin(E)
 
@@ -228,7 +230,7 @@ class Symplectic_Integrator:
         for i in range(100):  # Break out if a certain accuracy is not achieved after 50 loops
             Enew = E + deltaij(E, M, e, 3)
             error = np.abs((Enew - E) / E)
-            error_check = error[1:] <= accuracy  # error of only the planets
+            error_check = (error <= accuracy)  # error of only the planets
 
             if (np.all(error_check)):
                 return Enew
@@ -254,20 +256,65 @@ class Symplectic_Integrator:
         mass = np.array(self.m)
 
         P = (mass * v_vec.T).T
+        #
+        # # H_kepler = np.sum(self.mag(P) ** 2 / (2 * mass) - self.G * mass * self.msun / self.mag(r_vec))
+        # H_kepler = np.sum(mass / 2.0 * self.mag(v_vec)**2 - self.G * mass * self.msun / self.mag(r_vec))
+        #
+        # # Interaction Energy
+        # H_int = 0
+        # for i in range(len(self.names) - 1):
+        #     for j in range(i + 1, len(self.names)):
+        #         dr_vec = r_vec[j] - r_vec[i]
+        #         H_int -= self.G * mass[j] * mass[i] / self.mag(dr_vec)
+        #
+        # # Sun Hamiltonian
+        # H_sun = self.mag(np.sum(P, axis = 0)) ** 2 / (2 * self.msun)
+        #
+        # self.energy.append(H_sun + H_int + H_kepler)
 
-        H_kepler = np.sum(self.mag(P) ** 2 / (2 * mass) - self.G * mass * self.msun / self.mag(r_vec))
 
-        # Interaction Energy
-        H_int = 0
-        for i in range(len(self.names) - 1):
-            for j in range(i + 1, len(self.names)):
-                dr_vec = r_vec[j] - r_vec[i]
-                H_int -= self.G * mass[j] * mass[i] / self.mag(dr_vec)
+        # Minton's code - Kaustub Adaptation
+        vhvec = self.bc_to_hc(v_vec, mass)
+        P = (mass * vhvec.T).T
+        vbcb = -np.sum(P, axis=0) / (self.m_tot)
+        ke = 0.5 * (self.msun * np.vdot(vbcb, vbcb))
+        ke += 0.5 * np.sum(mass * self.mag(v_vec)**2)
 
-        # Sun Hamiltonian
-        H_sun = self.mag(np.sum(P, axis = 0)) ** 2 / (2 * self.msun)
+        def pe_one(m, rvec, i):
+            drvec = rvec[i + 1:, :] - rvec[i, :]
+            irij = np.linalg.norm(drvec, axis=1)
+            irij = self. G * m[i + 1:] * m[i] / irij
+            return irij
 
-        self.energy.append(H_sun + H_int + H_kepler)
+        n = r_vec.shape[0]
+        pe = (-self.G * self.msun * np.sum(mass / self.mag(r_vec)) - np.sum([pe_one(mass.flatten(), r_vec, i) for i in range(n-1)]))
+        pe_test = [pe_one(mass.flatten(), r_vec, i) for i in range(n-1)]
+
+        self.energy.append(ke + pe)
+
+        # Minton's code
+        # GMcb = self.G * self.msun
+        # Gmass = mass * self.G
+        # rhvec = r_vec
+        # vhvec = self.bc_to_hc(v_vec, mass)
+        # GC_tmp = GMcb
+        #
+        # vbvec = self.hc_to_bc(vhvec, mass)
+        # vbcb = -np.sum((mass * vhvec.T).T, axis=0) / (self.m_tot)
+        # vbmag2 = np.einsum("ij,ij->i", vbvec, vbvec)
+        # irh = 1.0 / np.linalg.norm(rhvec, axis=1)
+        # ke = 0.5 * (GMcb * np.vdot(vbcb, vbcb) + np.sum(Gmass * vbmag2)) / GC_tmp
+        #
+        # def pe_one(Gm, rvec, i):
+        #     drvec = rvec[i + 1:, :] - rvec[i, :]
+        #     irij = np.linalg.norm(drvec, axis=1)
+        #     irij = Gm[i + 1:] * Gm[i] / irij
+        #     return irij
+        #
+        # n = rhvec.shape[0]
+        # pe = (-GMcb * np.sum(Gmass * irh) - np.sum([pe_one(Gmass.flatten(), rhvec, i) for i in range(n - 1)])) / GC_tmp
+        #
+        # self.energy.append(ke + pe)
 
         return
 
@@ -304,7 +351,7 @@ class Symplectic_Integrator:
 
             # Danby's solver
 
-            E_tmp = self.danby(el_elements['M'], el_elements['e'])
+            E_tmp = self.danby(el_elements['M'][0], el_elements['e'][0])
 
             dE = (E_tmp - el_elements['E'])[0]
             el_elements['E'] = E_tmp
@@ -329,7 +376,7 @@ class Symplectic_Integrator:
             v_vec = self.vb_vec[i]
             mu = self.mu[i]
 
-            r_new, v_new, el_elements_new = kepler_drift(self, r_vec, v_vec, mu, self.dt)
+            r_new, v_new, el_elements_new = kepler_drift(self, r_vec, v_vec, mu, self.dt) # self.G * self.msun #mu
 
             self.rh_vec[i] = r_new
             self.vb_vec[i] = v_new
@@ -350,7 +397,7 @@ class Symplectic_Integrator:
             for j in range(len(self.names)):  # cycle through remaining planets in the system
                 if (i == j):
                     continue
-                dr_vec = self.rh_vec[j] - self.rh_vec[i]
+                dr_vec = np.array(self.rh_vec[j] - self.rh_vec[i])
                 acc += self.G * self.m[j] / np.power(self.mag(dr_vec), 3) * dr_vec  # Force calculation
 
             self.vb_vec[i] += acc * self.dt / 2
@@ -366,7 +413,7 @@ class Symplectic_Integrator:
         """
 
         r_dot =  np.sum((self.m * self.vb_vec.T).T, axis = 0) / self.msun
-        self.rh_vec += r_dot * self.dt
+        self.rh_vec += r_dot * self.dt / 2
 
 
         return
@@ -401,7 +448,7 @@ class Symplectic_Integrator:
             vec_b : Heliocentric vectors (n, 3)
 
         """
-        origin_h = -np.sum((m * vec_b.T).T, axis=0) / self.m_sun  # m[0] = mass of the sun
+        origin_h = -np.sum((m * vec_b.T).T, axis=0) / self.msun
         vec_h = vec_b - origin_h
 
         return vec_h
@@ -515,10 +562,11 @@ class Symplectic_Integrator:
         Updates the final output dataset for plotting and analysis
         """
         xv_tmp = np.append(self.rh_vec, self.vb_vec, axis = 1)
+        # el_tmp = np.array(self.el_elements_tmp)
 
         self.calc_energy()
         self.xv_elements.append(xv_tmp)
-        self.el_elements.append(self.el_elements_tmp)
+        self.el_elements.append(self.el_elements_tmp[:])
         self.E_err.append((self.energy[-1] - self.energy[0]) / self.energy[0])
         self.phi.append(self.calc_phi())
 
@@ -594,6 +642,8 @@ class Symplectic_Integrator:
             self.m.append(1 / MSun_over_Mpl[planet])
             self.mu.append((self.m[-1] + self.msun) * self.G)
 
+        self.m = np.array(self.m)
+        self.mu = np.array(self.mu)
         return
 
     def step(self):
@@ -747,7 +797,8 @@ if __name__ == '__main__':
         t_end: time to stop the simulation (days)
     """
     date = '2022-10-12'
-    t_end = 365.25 * 10**5
+    t_end = 365.25 * 1e5 * 1
+    t_end_str = str(int(t_end / (365.25 * 1000))) + '_kyr'
     symp = Symplectic_Integrator(['Neptune', 'Pluto'], date)
 
     symp.simulate(t_end)
@@ -758,4 +809,4 @@ if __name__ == '__main__':
     symp.plot('phi')
     symp.plot('e')
     symp.plot('a')
-    symp.data.to_netcdf('../data/kaustub_symp_intr_run_data_.nc', mode = 'w')
+    symp.data.to_netcdf(f'../data/kaustub_symp_intr_run_data_{t_end_str}.nc', mode = 'w')
