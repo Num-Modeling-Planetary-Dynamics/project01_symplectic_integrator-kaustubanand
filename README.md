@@ -19,14 +19,13 @@ I have submitted an updated code for the Symplectic Integrator project. Here are
   - 'date' : the starting date for the integrator. JPL Horizons data is extracted for the bodies from this date. (YYYY-MM-DD format)
   - 't_end' : length of time the integrator is run for. (days)
   - 'names' : names of the bodies to be integrated.
-- The resonance angle is bounded and librates about 180$\degree$ between ~ 80$\degree$ and 260$\degree$.
+- The resonance angle is bounded and librates about 180$\degree$ between ~ 100$\degree$ and 260$\degree$.
+- Relative energy error is also bounded. This has been tested for 5e4, 1e5, and 2e5 years. 
+  - I will also test this boundedness for 1e6 years.
 
 ## Below are the main issues:
 
-- The energy error is unbounded and rising, however it is **an order of magnitude smaller** than the energy error in the previous code.
-  - There may be an error in the calculation. The orbital elements show the correct growth over time.
-- The eccentricity of Pluto is flat, and does not vary much.
-  - There might be an issue in the variable vector updates.
+
 
 # =================================
 
