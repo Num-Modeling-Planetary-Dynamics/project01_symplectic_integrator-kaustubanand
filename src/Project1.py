@@ -357,16 +357,7 @@ class Symplectic_Integrator:
             el_elements['E'] = E_tmp
 
             # Danby's conversion to cartesian
-            r_0 = self.mag(r_vec)
-
-            f, g = self.danby_f_and_g(dE, r_0, el_elements['a'][0], el_elements['n'][0], dt)
-
-            r = f * r_vec + g * v_vec  # f and g are arrays
-            r_mag = self.mag(r)
-
-            f_dot, g_dot = self.danby_f_and_g_dot(dE, r_mag, r_0, el_elements['a'][0], el_elements['n'][0], dt)
-
-            v = f_dot * r_vec + g_dot * v_vec
+            r, v = self.el_to_xy_danby(r_vec, v_vec, el_elements['a'][0], el_elements['n'][0], dE)
 
             return r, v, el_elements
 
@@ -790,6 +781,36 @@ class Symplectic_Integrator:
 
         return phi
 
+    def el_to_xy_danby(self, r_vec, v_vec, a, n, dE):
+        """
+        Converts orbital elements to position and velocity vectors using Danby's equations
+
+        Input parameters:
+            r_vec : initial position vector (3)
+            v_vec : initial velocity vector (3)
+            a : semi-major axis (scalar)
+            n : mean motion (scalar)
+            dE : difference in eccentric anomaly (scalar)
+
+        Output parameters:
+            r : New position vector (3)
+            v : New velocity vector (3)
+        """
+
+        # Danby's conversion to cartesian
+        r_0 = self.mag(r_vec)
+
+        f, g = self.danby_f_and_g(dE, r_0, a, n, self.dt)
+
+        r = f * r_vec + g * v_vec  # f and g are arrays
+        r_mag = self.mag(r)
+
+        f_dot, g_dot = self.danby_f_and_g_dot(dE, r_mag, r_0, a, n, self.dt)
+
+        v = f_dot * r_vec + g_dot * v_vec
+
+        return r, v
+
 if __name__ == '__main__':
     """
     Inputs needed:
@@ -797,7 +818,7 @@ if __name__ == '__main__':
         t_end: time to stop the simulation (days)
     """
     date = '2022-10-12'
-    t_end = 365.25 * 1e5 * 1
+    t_end = 365.25 * 1e5 * 0.5
     t_end_str = str(int(t_end / (365.25 * 1000))) + '_kyr'
     symp = Symplectic_Integrator(['Neptune', 'Pluto'], date)
 
